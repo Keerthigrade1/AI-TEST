@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1020,30 +1022,26 @@ header {
   }
 
   async function runClaude() {
+    const GEMINI_KEY = 'AIzaSyDKRyQbjhBhogApMY3FyaVcf6qeL3cpfQE';
     const getType = d => d.includes('image/png') ? 'image/png' : d.includes('image/webp') ? 'image/webp' : 'image/jpeg';
-    const resp = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        beforeImage: imgs.before.split(',')[1],
-        afterImage: imgs.after.split(',')[1],
-        beforeType: getType(imgs.before),
-        afterType: getType(imgs.after)
-      })
-    });
-    if (!resp.ok) throw new Error('AI API error: ' + resp.status);
-    const raw_text = await resp.text();
-    let gemini_data;
-    try {
-      gemini_data = JSON.parse(raw_text);
-    } catch(e) {
-      throw new Error('Could not parse response: ' + raw_text.slice(0, 200));
-    }
-    // Extract text from Gemini response
-    if (!gemini_data.candidates || !gemini_data.candidates[0]) {
-      throw new Error('Unexpected Gemini response: ' + JSON.stringify(gemini_data).slice(0, 200));
-    }
-    const text = gemini_data.candidates[0].content.parts[0].text;
+    const payload = {
+      contents: [{ parts: [
+        { text: 'You are a vehicle damage inspector. Compare CHECKOUT vs RETURN photo and identify NEW damage. Respond ONLY in raw JSON no markdown: {"hasDamage":true,"overallSeverity":"HIGH","averageConfidence":85,"estimatedRepairMin":200,"estimatedRepairMax":500,"summary":"summary here","damages":[{"type":"Scratch","location":"front bumper","severity":"MEDIUM","confidence":85,"estimatedCost":300}]}' },
+        { text: 'CHECKOUT PHOTO (before rental):' },
+        { inline_data: { mime_type: getType(imgs.before), data: imgs.before.split(",")[1] } },
+        { text: 'RETURN PHOTO (after rental):' },
+        { inline_data: { mime_type: getType(imgs.after), data: imgs.after.split(",")[1] } }
+      ]}],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
+    };
+    const resp = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_KEY,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+    );
+    if (!resp.ok) throw new Error('Gemini error: ' + resp.status);
+    const data = await resp.json();
+    if (!data.candidates || !data.candidates[0]) throw new Error('No response: ' + JSON.stringify(data));
+    const text = data.candidates[0].content.parts[0].text;
     return JSON.parse(text.replace(/```json|```/g, '').trim());
   }
 
