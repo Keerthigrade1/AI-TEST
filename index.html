@@ -1062,7 +1062,7 @@ header {
     const rbCount = rb.predictions ? rb.predictions.length : 0;
     document.getElementById('vs-count').textContent = Math.max(rbCount, cl.damages ? cl.damages.length : 0);
     document.getElementById('vs-rb').textContent = rbCount;
-    const avgConf = preds.length > 0 ? Math.round(preds.reduce((a,p) => a + p.confidence*100, 0) / preds.length) : 0; document.getElementById('vs-conf').textContent = avgConf + '%';
+    const avgConf = (rb.predictions && rb.predictions.length > 0) ? Math.round(rb.predictions.reduce((a,p) => a + p.confidence*100, 0) / rb.predictions.length) : 0; document.getElementById('vs-conf').textContent = avgConf + '%';
 
     // Show Roboflow findings in Claude panel
     const fl = document.getElementById('finding-list');
