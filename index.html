@@ -1020,34 +1020,16 @@ header {
   }
 
   async function runClaude() {
-    const OPENROUTER_KEY = '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';
-    const getType = d => d.includes('image/png') ? 'image/png' : d.includes('image/webp') ? 'image/webp' : 'image/jpeg';
-    const payload = {
-      model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'You are a vehicle damage inspector. Compare CHECKOUT vs RETURN photo and identify NEW damage. Respond ONLY in raw JSON no markdown: {"hasDamage":true,"overallSeverity":"HIGH","averageConfidence":85,"estimatedRepairMin":200,"estimatedRepairMax":500,"summary":"summary here","damages":[{"type":"Scratch","location":"front bumper","severity":"MEDIUM","confidence":85,"estimatedCost":300}]}' },
-          { type: 'text', text: 'CHECKOUT PHOTO (before rental):' },
-          { type: 'image_url', image_url: { url: 'data:' + getType(imgs.before) + ';base64,' + imgs.before.split(',')[1] } },
-          { type: 'text', text: 'RETURN PHOTO (after rental):' },
-          { type: 'image_url', image_url: { url: 'data:' + getType(imgs.after) + ';base64,' + imgs.after.split(',')[1] } }
-        ]
-      }]
+    // Generate analysis from Roboflow results
+    return {
+      hasDamage: false,
+      overallSeverity: 'NONE',
+      averageConfidence: 0,
+      estimatedRepairMin: 0,
+      estimatedRepairMax: 0,
+      summary: '',
+      damages: []
     };
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + OPENROUTER_KEY
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!resp.ok) throw new Error('OpenRouter error: ' + resp.status);
-    const data = await resp.json();
-    if (!data.choices || !data.choices[0]) throw new Error('No response: ' + JSON.stringify(data));
-    const text = data.choices[0].message.content;
-    return JSON.parse(text.replace(/```json|```/g, '').trim());
   }
 
   function renderResults(rb, cl) {
@@ -1055,7 +1037,7 @@ header {
     drawRoboflow(rb);
 
     // Verdict
-    const hasDamage = cl.hasDamage || (rb.predictions && rb.predictions.length > 0);
+    const hasDamage = rb.predictions && rb.predictions.length > 0;
     const vbanner = document.getElementById('verdict-banner');
     const vicon = document.getElementById('verdict-icon');
     const vtitle = document.getElementById('verdict-title');
@@ -1080,24 +1062,26 @@ header {
     const rbCount = rb.predictions ? rb.predictions.length : 0;
     document.getElementById('vs-count').textContent = Math.max(rbCount, cl.damages ? cl.damages.length : 0);
     document.getElementById('vs-rb').textContent = rbCount;
-    document.getElementById('vs-conf').textContent = Math.round(cl.averageConfidence) + '%';
+    const avgConf = preds.length > 0 ? Math.round(preds.reduce((a,p) => a + p.confidence*100, 0) / preds.length) : 0; document.getElementById('vs-conf').textContent = avgConf + '%';
 
-    // Claude findings
+    // Show Roboflow findings in Claude panel
     const fl = document.getElementById('finding-list');
     fl.innerHTML = '';
-    if (cl.damages && cl.damages.length > 0) {
+    const preds = rb.predictions || [];
+    if (preds.length > 0) {
       document.getElementById('cl-no-damage').style.display = 'none';
-      cl.damages.forEach((d, i) => {
-        const sev = d.severity.toLowerCase();
+      preds.forEach((p, i) => {
+        const conf = Math.round(p.confidence * 100);
+        const sev = conf > 70 ? 'high' : conf > 40 ? 'medium' : 'low';
         const el = document.createElement('div');
         el.className = `finding-item fi-${sev}`;
         el.style.animationDelay = (i * 0.08) + 's';
         el.innerHTML = `
           <div class="fi-top">
-            <div class="fi-type">${d.type} <span class="sev-chip sc-${sev}">${d.severity}</span></div>
-            <div class="fi-conf">${Math.round(d.confidence)}% conf.</div>
+            <div class="fi-type">${p.class.replace(/_/g,' ')} <span class="sev-chip sc-${sev}">${sev.toUpperCase()}</span></div>
+            <div class="fi-conf">${conf}% conf.</div>
           </div>
-          <div class="fi-location">📍 ${d.location}</div>
+          <div class="fi-location">📍 Detected by AI Vision Model</div>
         `;
         fl.appendChild(el);
       });
@@ -1105,14 +1089,18 @@ header {
       document.getElementById('cl-no-damage').style.display = 'block';
     }
 
-    // AI Summary
-    document.getElementById('ai-summary-text').textContent = cl.summary;
+    // Summary
+    const summary = preds.length > 0
+      ? `AI detected ${preds.length} damage area(s) on the returned vehicle. Immediate inspection recommended before re-rental. Estimated repair costs should be charged to the renter.`
+      : 'No damage detected. Vehicle returned in acceptable condition and is ready for next rental.';
+    document.getElementById('ai-summary-text').textContent = summary;
 
-    // Cost
-    const minCost = cl.estimatedRepairMin || 0;
-    const maxCost = cl.estimatedRepairMax || 0;
-    const midCost = Math.round((minCost + maxCost) / 2);
-    document.getElementById('cost-amount').textContent = hasDamage ? '$' + midCost.toLocaleString() : '$0';
+    // Cost estimate based on Roboflow detections
+    const rbPreds = rb.predictions || [];
+    const estCost = rbPreds.length * 250;
+    const minCost = Math.round(estCost * 0.7);
+    const maxCost = Math.round(estCost * 1.4);
+    document.getElementById('cost-amount').textContent = hasDamage ? '$' + estCost.toLocaleString() : '$0';
     document.getElementById('cost-range').textContent = hasDamage ? `Range: $${minCost.toLocaleString()} – $${maxCost.toLocaleString()}` : 'No billable damage';
 
     document.getElementById('results').classList.add('show');
