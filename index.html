@@ -1023,7 +1023,7 @@ header {
     const OPENROUTER_KEY = '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';
     const getType = d => d.includes('image/png') ? 'image/png' : d.includes('image/webp') ? 'image/webp' : 'image/jpeg';
     const payload = {
-      model: 'google/gemini-2.0-flash-exp:free',
+      model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
       messages: [{
         role: 'user',
         content: [
